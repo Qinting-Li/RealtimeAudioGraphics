@@ -2,6 +2,9 @@ class Microphone {
 
     constructor(fftSize) {
         this.initialized = false;
+        this.ready = new Promise((resolve) => {
+            this.resolveReady = resolve;
+        });
         navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
             this.audioContext = new AudioContext();
             this.microphone = this.audioContext.createMediaStreamSource(stream);
@@ -17,15 +20,13 @@ class Microphone {
                 mid: 0,
                 high: 0
             };
+            this.previousBands = this.prevBands;
             this.lowPassFilter = this.audioContext.createBiquadFilter();
             this.lowPassFilter.type = 'lowpass';
             this.lowPassFilter.frequency.value = 40;
             this.microphone.connect(this.lowPassFilter);
             this.lowPassFilter.connect(this.analyser);
-
-            this.ready = new Promise((resolve) => {
-                this.resolveReady = resolve;
-            })
+            this.resolveReady();
         }.bind(this)).catch(function (err) {
             console.log(err);
         });
@@ -133,7 +134,10 @@ class Microphone {
             bands.high = this.applySmoothing(bands.high, this.previousBands.high, alphaHigh);
         }
         this.prevBands = bands;
+        this.previousBands = bands;
         
         return bands;
     }
 } 
+
+class AudioEngine extends Microphone {}

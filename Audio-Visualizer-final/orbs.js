@@ -1,11 +1,20 @@
-let orbsScene, orbsCamera, orbsRenderer, group, plane, plane2, ball, orbsAmbientLight, orbsSpotLight, orbsOrbitControls;
+let orbsScene;
+let orbsCamera;
+let orbsRenderer;
+let orbsOrbitControls;
+let orbsAnimationId;
+let orbsShapeAnimationId;
+let microphone;
 
-var noise = new SimplexNoise();
+const noise = new SimplexNoise();
 
 function initOrbsVisualizer(mic) {
     microphone = mic;
+    let running = false;
+    let disposed = false;
+
     orbsScene = new THREE.Scene();
-    group = new THREE.Group();
+    const group = new THREE.Group();
 
     orbsCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     orbsCamera.position.set(0, 0, 100);
@@ -14,164 +23,160 @@ function initOrbsVisualizer(mic) {
 
     orbsRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     orbsRenderer.setSize(window.innerWidth, window.innerHeight);
-    //document.body.appendChild(orbsRenderer.domElement);
     document.getElementById('visualizerContainer').appendChild(orbsRenderer.domElement);
-
 
     orbsOrbitControls = new THREE.OrbitControls(orbsCamera, orbsRenderer.domElement);
     orbsOrbitControls.target.set(0, 0, 0);
     orbsOrbitControls.enablePan = false;
 
-    const geometries = createGeometry();
+    const geometries = createGeometry(group);
     createLights();
-
     orbsScene.add(group);
 
-    window.addEventListener('resize', orbsOnWindowResize, false);
-    animateOrbsVisualizer(geometries);
+    window.addEventListener('resize', onResize, false);
+    start();
+
+    function start() {
+        if (running || disposed) {
+            return;
+        }
+        running = true;
+        animateOrbs(group, geometries);
+        animateExtraShapes(geometries);
+    }
+
+    function stop() {
+        if (!running) {
+            return;
+        }
+        running = false;
+        window.cancelAnimationFrame(orbsAnimationId);
+        window.cancelAnimationFrame(orbsShapeAnimationId);
+    }
+
+    function dispose() {
+        if (disposed) {
+            return;
+        }
+        stop();
+        disposed = true;
+        window.removeEventListener('resize', onResize);
+        orbsOrbitControls.dispose();
+        disposeObject3D(orbsScene);
+        orbsRenderer.dispose();
+
+        const visualizerContainer = document.getElementById('visualizerContainer');
+        if (visualizerContainer && orbsRenderer.domElement && visualizerContainer.contains(orbsRenderer.domElement)) {
+            visualizerContainer.removeChild(orbsRenderer.domElement);
+        }
+    }
+
+    function onResize() {
+        orbsCamera.aspect = window.innerWidth / window.innerHeight;
+        orbsCamera.updateProjectionMatrix();
+        orbsRenderer.setSize(window.innerWidth, window.innerHeight);
+    }
 
     return {
+        start,
         stop: function () {
             console.log("Stopping Orbs visualizer");
-
-            window.cancelAnimationFrame(orbsAnimationId);
-            //document.body.removeChild(orbsRenderer.domElement);
-            document.getElementById('visualizerContainer').removeChild(orbsRenderer.domElement);
-            orbsOrbitControls.dispose();
-            window.removeEventListener('resize', orbsOnWindowResize);
+            dispose();
         },
+        dispose,
     };
 }
 
-function createGeometry() {
-    var planeGeometry = new THREE.PlaneGeometry(800, 800, 20, 20);
-    var planeMaterial = new THREE.MeshLambertMaterial({
+function createGeometry(group) {
+    const planeGeometry = new THREE.PlaneGeometry(800, 800, 20, 20);
+    const planeMaterial = new THREE.MeshLambertMaterial({
         color: 0x6904ce,
         side: THREE.DoubleSide,
-        wireframe: true
+        wireframe: true,
     });
 
-    plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
     plane.rotation.x = -0.5 * Math.PI;
     plane.position.set(0, 30, 0);
     group.add(plane);
 
-    plane2 = new THREE.Mesh(planeGeometry, planeMaterial);
+    const plane2 = new THREE.Mesh(planeGeometry.clone(), planeMaterial.clone());
     plane2.rotation.x = -0.5 * Math.PI;
     plane2.position.set(0, -30, 0);
     group.add(plane2);
 
-    var icosahedronGeometry = new THREE.IcosahedronGeometry(20, 4);
-    var lambertMaterial = new THREE.MeshLambertMaterial({
-        color: 0xff00ee,
-        wireframe: true
-    });
-
-    ball = new THREE.Mesh(icosahedronGeometry, lambertMaterial);
-    ball.position.set(0, 0, 0);
+    const ball = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(20, 4),
+        new THREE.MeshLambertMaterial({ color: 0xff00ee, wireframe: true })
+    );
     group.add(ball);
 
-
-    // Define a new torus geometry
-    var torusGeometry = new THREE.TorusGeometry(4, 1, 16, 100);
-
-    // Define a new material for the torus
-    var torusMaterial = new THREE.MeshPhongMaterial({
-        color: 0xff00ff,
-        shininess: 100,
-        specular: 0xc0c0ff,
-        transparent: true,
-        opacity: 0.9
-    });
-
-    // 创建曲面几何体
-    var sphereGeometry = new THREE.SphereGeometry(13, 32, 32);
-    var sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x7F00FF, wireframe: true });
-    var sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    sphere.position.set(0, 0, 0);
+    const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(13, 32, 32),
+        new THREE.MeshBasicMaterial({ color: 0x7F00FF, wireframe: true })
+    );
     group.add(sphere);
 
-    var coneGeometry = new THREE.ConeGeometry(10, 20, 32);
-    var coneMaterial = new THREE.MeshBasicMaterial({ color: 0x00FFFF, wireframe: true });
-    var cone = new THREE.Mesh(coneGeometry, coneMaterial);
+    const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(10, 20, 32),
+        new THREE.MeshBasicMaterial({ color: 0x00FFFF, wireframe: true })
+    );
     cone.position.set(50, 0, 0);
     group.add(cone);
 
-    // ...
-    var boxGeometry = new THREE.BoxGeometry(20, 20, 20);
-    var boxMaterial = new THREE.MeshPhongMaterial({ color: 0xFF00FF, emissive: 0xFF00FF, emissiveIntensity: 1, transparent: true, opacity: 0.7 });
-    var box = new THREE.Mesh(boxGeometry, boxMaterial);
+    const box = new THREE.Mesh(
+        new THREE.BoxGeometry(20, 20, 20),
+        new THREE.MeshPhongMaterial({
+            color: 0xFF00FF,
+            emissive: 0xFF00FF,
+            emissiveIntensity: 1,
+            transparent: true,
+            opacity: 0.7,
+        })
+    );
     box.position.set(-50, 0, 0);
     group.add(box);
-
-    var clock = new THREE.Clock();
-
-    function animate() {
-        requestAnimationFrame(animate);
-
-        // 旋转立方体和圆柱体
-        sphere.rotation.x += 0.01;
-        sphere.rotation.y += 0.02;
-        cone.rotation.z += 0.01;
-        box.rotation.x += 0.02;
-
-
-        // 更新时钟并获取经过的时间
-        var elapsedTime = clock.getElapsedTime();
-
-    }
-
-    animate();
 
     return { ball, plane, plane2, cone, sphere, box };
 }
 
 function createLights() {
-    orbsAmbientLight = new THREE.AmbientLight(0xaaaaaa);
-    orbsScene.add(orbsAmbientLight);
+    const ambientLight = new THREE.AmbientLight(0xaaaaaa);
+    orbsScene.add(ambientLight);
 
-    orbsSpotLight = new THREE.SpotLight(0xffffff);
-    orbsSpotLight.intensity = 0.9;
-    orbsSpotLight.position.set(-10, 40, 20);
-    orbsSpotLight.lookAt(ball);
-    orbsSpotLight.castShadow = true;
-    orbsScene.add(orbsSpotLight);
+    const spotLight = new THREE.SpotLight(0xffffff);
+    spotLight.intensity = 0.9;
+    spotLight.position.set(-10, 40, 20);
+    spotLight.castShadow = true;
+    orbsScene.add(spotLight);
 
-    orbsAmbientLight = new THREE.AmbientLight(0xaaaaaa);
-    orbsScene.add(orbsAmbientLight);
-
-    orbsSpotLight = new THREE.SpotLight(0xffffff);
-    orbsSpotLight.intensity = 0.9;
-    orbsSpotLight.position.set(-10, 40, 20);
-    orbsSpotLight.lookAt(ball);
-    orbsSpotLight.castShadow = true;
-    orbsScene.add(orbsSpotLight);
-
-    // Add a directional light
-    orbsDirectionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    orbsDirectionalLight.position.set(1, 1, 1);
-    orbsScene.add(orbsDirectionalLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    directionalLight.position.set(1, 1, 1);
+    orbsScene.add(directionalLight);
 }
 
-let orbsAnimationId;
-
-function animateOrbsVisualizer(geometries) {
-    orbsAnimationId = requestAnimationFrame(() => animateOrbsVisualizer(geometries));
-
+function animateOrbs(group, geometries) {
     if (microphone.initialized) {
         updateGeometry(geometries.ball, geometries.plane, geometries.plane2);
-
         group.rotation.y += 0.005;
-        orbsRenderer.render(orbsScene, orbsCamera);
         orbsOrbitControls.update();
+        orbsRenderer.render(orbsScene, orbsCamera);
     }
+    orbsAnimationId = requestAnimationFrame(() => animateOrbs(group, geometries));
+}
+
+function animateExtraShapes(geometries) {
+    geometries.sphere.rotation.x += 0.01;
+    geometries.sphere.rotation.y += 0.02;
+    geometries.cone.rotation.z += 0.01;
+    geometries.box.rotation.x += 0.02;
+    orbsShapeAnimationId = requestAnimationFrame(() => animateExtraShapes(geometries));
 }
 
 function updateGeometry(ball, plane, plane2) {
-    const samples = microphone.getSamples();
     const volume = microphone.getVolume();
-    upperAvgFr = 0.6 + volume * 5;
-    lowerMaxFr = -0.6 + volume * 5;
+    const upperAvgFr = 0.6 + volume * 5;
+    const lowerMaxFr = -0.6 + volume * 5;
 
     makeRoughGround(plane, modulate(upperAvgFr, 0, 1, 0.5, 4));
     makeRoughGround(plane2, modulate(lowerMaxFr, 0, 1, 0.5, 4));
@@ -179,7 +184,6 @@ function updateGeometry(ball, plane, plane2) {
 }
 
 function makeRoughBall(mesh, bassFr, treFr) {
-
     const positionAttribute = mesh.geometry.getAttribute('position');
     const count = positionAttribute.count;
     const offset = mesh.geometry.parameters.radius;
@@ -193,7 +197,12 @@ function makeRoughBall(mesh, bassFr, treFr) {
         const z = positionAttribute.getZ(i);
 
         const vertex = new THREE.Vector3(x, y, z).normalize();
-        const distance = (offset + bassFr * 5) + noise.noise3D(vertex.x + time * rf * 7, vertex.y + time * rf * 8, vertex.z + time * rf * 9) * amp * treFr * 0.5;
+        const distance = (offset + bassFr * 5) + noise.noise3D(
+            vertex.x + time * rf * 7,
+            vertex.y + time * rf * 8,
+            vertex.z + time * rf * 9
+        ) * amp * treFr * 0.5;
+
         vertex.multiplyScalar(distance);
         positionAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
 
@@ -216,14 +225,8 @@ function makeRoughGround(mesh, distortionFr) {
     for (let i = 0; i < count; i++) {
         const x = positionAttribute.getX(i);
         const y = positionAttribute.getY(i);
-        let z = positionAttribute.getZ(i);
-
-        const amp = 3;
-        const time = Date.now();
-        const distance = (noise.noise2D(x + time * 0.0003, y + time * 0.0001) + 0) * distortionFr * amp;
-        z = distance;
-
-        positionAttribute.setXYZ(i, x, y, z);
+        const distance = noise.noise2D(x + Date.now() * 0.0003, y + Date.now() * 0.0001) * distortionFr * 3;
+        positionAttribute.setXYZ(i, x, y, distance);
     }
     positionAttribute.needsUpdate = true;
     mesh.geometry.computeVertexNormals();
@@ -234,24 +237,27 @@ function fractionate(val, minVal, maxVal) {
 }
 
 function modulate(val, minVal, maxVal, outMin, outMax) {
-    var fr = fractionate(val, minVal, maxVal);
-    var delta = outMax - outMin;
+    const fr = fractionate(val, minVal, maxVal);
+    const delta = outMax - outMin;
     return outMin + (fr * delta);
 }
 
-function avg(arr) {
-    var total = arr.reduce(function (sum, b) { return sum + b; });
-    return (total / arr.length);
+function disposeObject3D(root) {
+    root.traverse((object) => {
+        if (object.geometry) {
+            object.geometry.dispose();
+        }
+        if (object.material) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+                Object.keys(material).forEach((key) => {
+                    const value = material[key];
+                    if (value && typeof value.dispose === 'function') {
+                        value.dispose();
+                    }
+                });
+                material.dispose();
+            });
+        }
+    });
 }
-
-function max(arr) {
-    return arr.reduce(function (a, b) { return Math.max(a, b); })
-}
-
-function orbsOnWindowResize() {
-    orbsCamera.aspect = window.innerWidth / window.innerHeight;
-    orbsCamera.updateProjectionMatrix();
-    orbsRenderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-

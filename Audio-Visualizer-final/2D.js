@@ -2,8 +2,12 @@ function init2DVisualizer(mic) {
 
     const canvas = document.getElementById('myCanvas');
     const ctx = canvas.getContext('2d');
+    const microphone = mic;
+    let running = false;
+    let disposed = false;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    canvas.style.display = 'block';
     window.addEventListener('resize', onResize);
 
     // position GUI
@@ -77,7 +81,6 @@ function init2DVisualizer(mic) {
         }
     }
 
-    const microphone = new Microphone(settings.fftSize);
     let bars = [];
     let barWidth = canvas.width / settings.fftSize / 2;
 
@@ -114,6 +117,9 @@ function init2DVisualizer(mic) {
     let animationID;
 
     function animate() {
+        if (!running || disposed) {
+            return;
+        }
         if (microphone.initialized) {
             // clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -149,8 +155,8 @@ function init2DVisualizer(mic) {
         animationID = requestAnimationFrame(animate);
     }
 
-    animate();
     createBars(settings.colorRange);
+    start();
 
     function onResize() {
         canvas.width = window.innerWidth;
@@ -158,16 +164,45 @@ function init2DVisualizer(mic) {
     }
 
     // when stopping visualizer clear all
+    function start() {
+        if (running || disposed) {
+            return;
+        }
+        running = true;
+        canvas.style.display = 'block';
+        animationID = requestAnimationFrame(animate);
+    }
+
+    function stop() {
+        if (!running) {
+            return;
+        }
+        running = false;
+        window.cancelAnimationFrame(animationID);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.display = 'none';
+    }
+
+    function dispose() {
+        if (disposed) {
+            return;
+        }
+        stop();
+        disposed = true;
+        gui2D.destroy();
+        if (gui2D.domElement.parentNode) {
+            gui2D.domElement.parentNode.removeChild(gui2D.domElement);
+        }
+        window.removeEventListener('resize', onResize);
+    }
+
     return {
+        start,
         stop: function () {
             console.log("Stopping 2D visualizer");
-            window.cancelAnimationFrame(animationID);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            canvas.style.display = 'none';
-            gui2D.destroy();
-            gui2D.domElement.style.display = 'none';
-            window.removeEventListener('resize', onResize);
+            dispose();
         },
+        dispose,
     };
 
 }

@@ -191,9 +191,12 @@ var settings = {
 };
 
 let rayMarchingScene, rayMarchingCamera, rayMarchingRenderer, microphone, gui;
+let rayMarchingMouseMoveHandler;
 
 function initRayMarchingVisualizer(mic) {
   microphone = mic;
+  let running = false;
+  let disposed = false;
 
   rayMarchingScene = new THREE.Scene();
 
@@ -220,21 +223,70 @@ function initRayMarchingVisualizer(mic) {
   setup_RayMarching();
   onWindowResize_RayMarching();
   mouseEvents_RayMarching();
-  raf_RayMarching();
   settings_RayMarching();
+  start();
+
+  function start() {
+    if (running || disposed) {
+      return;
+    }
+    running = true;
+    rayMarchingAnimationId = window.requestAnimationFrame(raf_RayMarching);
+  }
+
+  function stop() {
+    if (!running) {
+      return;
+    }
+    running = false;
+    window.cancelAnimationFrame(rayMarchingAnimationId);
+  }
+
+  function dispose() {
+    if (disposed) {
+      return;
+    }
+    stop();
+    disposed = true;
+    if (rayMarchingMouseMoveHandler) {
+      document.removeEventListener("mousemove", rayMarchingMouseMoveHandler);
+      rayMarchingMouseMoveHandler = null;
+    }
+    if (gui) {
+      gui.destroy();
+    }
+    rayMarchingScene.traverse((object) => {
+      if (object.geometry) {
+        object.geometry.dispose();
+      }
+      if (object.material) {
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          Object.keys(material).forEach((key) => {
+            const value = material[key];
+            if (value && typeof value.dispose === "function") {
+              value.dispose();
+            }
+          });
+          material.dispose();
+        });
+      }
+    });
+    rayMarchingRenderer.dispose();
+    const visualizerContainer = document.getElementById('visualizerContainer');
+    if (visualizerContainer && rayMarchingRenderer.domElement && visualizerContainer.contains(rayMarchingRenderer.domElement)) {
+      visualizerContainer.removeChild(rayMarchingRenderer.domElement);
+    }
+    document.body.style.cursor = "default";
+  }
 
   return {
+    start,
     stop: function () {
       console.log("Stopping raymarching visualizer");
-      window.cancelAnimationFrame(rayMarchingAnimationId);
-      gui.destroy();
-      if (gui && gui.domElement.parentNode) {
-        gui.domElement.parentNode.removeChild(gui.domElement);
-      }
-      //rayMarchingRenderer.domElement.remove();
-      document.getElementById('visualizerContainer').removeChild(rayMarchingRenderer.domElement);
-      document.body.style.cursor = "default";
+      dispose();
     },
+    dispose,
   };
 }
 
@@ -250,7 +302,7 @@ function setup_RayMarching() {
       moonSize: { value: 0 },
       resolution: { value: new THREE.Vector4() },
       matcap: {
-        value: new THREE.TextureLoader().load("./assets/candy_matcap.png"),
+        value: createProceduralMatcap(),
       },
     },
     vertexShader: vShader,
@@ -278,7 +330,7 @@ function settings_RayMarching() {
 
 function mouseEvents_RayMarching() {
   var mouse = new THREE.Vector2();
-  document.addEventListener("mousemove", (e) => {
+  rayMarchingMouseMoveHandler = (e) => {
     //normalise mouse position
     mouse.x = e.pageX / window.innerWidth - 0.5;
     mouse.y = -e.pageY / window.innerHeight + 0.5;
@@ -286,7 +338,8 @@ function mouseEvents_RayMarching() {
     //pass mouse position to shader
     material.uniforms.mouse.value.x = mouse.x;
     material.uniforms.mouse.value.y = mouse.y + 0.15;
-  });
+  };
+  document.addEventListener("mousemove", rayMarchingMouseMoveHandler);
 }
 
 function onWindowResize_RayMarching() {
@@ -322,7 +375,6 @@ function normalise(value, min, max) {
 }
 
 function raf_RayMarching() {
-  rayMarchingAnimationId = window.requestAnimationFrame(raf_RayMarching);
   // console.log(rayMarchingAnimationId);
   updateTime_();
   updateSettings_();
@@ -345,6 +397,7 @@ function raf_RayMarching() {
   }
 
   rayMarchingRenderer.render(rayMarchingScene, rayMarchingCamera);
+  rayMarchingAnimationId = window.requestAnimationFrame(raf_RayMarching);
 }
 
 //function to update time
@@ -368,6 +421,25 @@ function updateSettings_() {
   material.uniforms.orbitSpeed.value = settings.orbitSpeed;
   material.uniforms.orbitOffset.value = settings.orbitOffset;
   material.uniforms.moonSize.value = settings.moonSize;
+}
+
+function createProceduralMatcap() {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createRadialGradient(size * 0.35, size * 0.3, 4, size * 0.5, size * 0.55, size * 0.7);
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(0.35, "#ff7af5");
+  gradient.addColorStop(0.7, "#6737ff");
+  gradient.addColorStop(1, "#050011");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
 }
 
 export { initRayMarchingVisualizer };

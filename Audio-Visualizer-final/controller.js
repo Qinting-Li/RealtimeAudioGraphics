@@ -156,7 +156,8 @@ suggestedGalaxy.addEventListener(
 );
 
 async function initController() {
-  mic = new Microphone(512);
+  mic = window.audioEngine || new AudioEngine(512);
+  window.audioEngine = mic;
   const selectedVisualizer = visualizerSettings.visualizer;
   currentVisualizer = await changeVisualizer(selectedVisualizer, mic);
 }

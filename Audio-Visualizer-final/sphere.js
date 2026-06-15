@@ -8,7 +8,8 @@ let sphereScene,
     sphereOrbitControls,
     sensitivity,
     gui,
-    mesh;
+    mesh,
+    microphone;
 
 const sphereSettings = {
     sensitivity: 1,
@@ -18,6 +19,8 @@ const sphereSettings = {
 function initSphereVisualizer(mic) {
     microphone = mic;
     sensitivity = sphereSettings.sensitivity;
+    let running = false;
+    let disposed = false;
 
     sphereScene = new THREE.Scene();
     sphereCamera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -58,34 +61,58 @@ function initSphereVisualizer(mic) {
 
     simplex = new SimplexNoise();
 
-    animateSphere();
+    start();
     settingsSphere();
 
+    function start() {
+        if (running || disposed) {
+            return;
+        }
+        running = true;
+        sphereAnimationId = requestAnimationFrame(animateSphere);
+    }
+
+    function stop() {
+        if (!running) {
+            return;
+        }
+        running = false;
+        window.cancelAnimationFrame(sphereAnimationId);
+    }
+
+    function dispose() {
+        if (disposed) {
+            return;
+        }
+        stop();
+        disposed = true;
+        window.removeEventListener('resize', sphereOnWindowResize);
+        sphereOrbitControls.dispose();
+        geometry.dispose();
+        sphereMaterial.dispose();
+        sphereRenderer.dispose();
+        let visualizerContainer = document.getElementById('visualizerContainer');
+        if (visualizerContainer && sphereRenderer && sphereRenderer.domElement && visualizerContainer.contains(sphereRenderer.domElement)) {
+            visualizerContainer.removeChild(sphereRenderer.domElement);
+        }
+        if (gui) {
+            gui.destroy();
+        }
+    }
+
     return {
+        start,
         stop: function () {
             console.log("Stopping sphere visualizer");
-
-            window.cancelAnimationFrame(sphereAnimationId);
-            //document.body.removeChild(sphereRenderer.domElement);
-            //document.getElementById('visualizerContainer').removeChild(sphereRenderer.domElement);
-            let visualizerContainer = document.getElementById('visualizerContainer');
-            if (visualizerContainer && sphereRenderer && sphereRenderer.domElement && visualizerContainer.contains(sphereRenderer.domElement)) {
-                visualizerContainer.removeChild(sphereRenderer.domElement);
-            }
-
-            sphereOrbitControls.dispose();
-            gui.destroy();
-            if (gui && gui.domElement.parentNode) {
-                gui.domElement.parentNode.removeChild(gui.domElement);
-            }
+            dispose();
         },
+        dispose,
     };
 }
 
 let sphereAnimationId;
 
 function animateSphere() {
-    sphereAnimationId = requestAnimationFrame(animateSphere);
     if (microphone.initialized) {
 
         sphereOrbitControls.update();
@@ -137,6 +164,7 @@ function animateSphere() {
     }
 
     sphereRenderer.render(sphereScene, sphereCamera);
+    sphereAnimationId = requestAnimationFrame(animateSphere);
 }
 
 function settingsSphere() {

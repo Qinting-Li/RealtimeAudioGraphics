@@ -12,7 +12,9 @@ let jellyScene,
     jellyMesh,
     jellyGeometry,
     distortion,
-    jellyGUI;
+    jellyGUI,
+    jellyClock,
+    microphone;
 
 // initial GUI settings    
 var settings = {
@@ -25,6 +27,8 @@ var settings = {
 
 function initJellyVisualizer(mic) {
     microphone = mic;
+    let running = false;
+    let disposed = false;
     LFAttenuation = settings.LFAttenuation;
     MFAttenuation = settings.MFAttenuation;
     HFAttenuation = settings.HFAttenuation;
@@ -46,7 +50,7 @@ function initJellyVisualizer(mic) {
     //document.body.appendChild(jellyRenderer.domElement);
     document.getElementById('visualizerContainer').appendChild(jellyRenderer.domElement);
 
-    clock = new THREE.Clock();
+    jellyClock = new THREE.Clock();
 
     state = {
         time: 0.0,
@@ -82,26 +86,51 @@ function initJellyVisualizer(mic) {
 
     window.addEventListener("resize", jellyOnWindowResize, false);
 
-    animateJellyVisualizer();
     settings_Jelly();
+    start();
 
-    // stop visualizer and GUI
+    function start() {
+        if (running || disposed) {
+            return;
+        }
+        running = true;
+        jellyAnimationId = requestAnimationFrame(animateJellyVisualizer);
+    }
+
+    function stop() {
+        if (!running) {
+            return;
+        }
+        running = false;
+        window.cancelAnimationFrame(jellyAnimationId);
+    }
+
+    function dispose() {
+        if (disposed) {
+            return;
+        }
+        stop();
+        disposed = true;
+        window.removeEventListener("resize", jellyOnWindowResize);
+        jellyOrbitControls.dispose();
+        if (jellyGUI) {
+            jellyGUI.destroy();
+        }
+        disposeObject3D(jellyScene);
+        jellyRenderer.dispose();
+        let visualizerContainer = document.getElementById('visualizerContainer');
+        if (visualizerContainer && jellyRenderer && jellyRenderer.domElement && visualizerContainer.contains(jellyRenderer.domElement)) {
+            visualizerContainer.removeChild(jellyRenderer.domElement);
+        }
+    }
+
     return {
+        start,
         stop: function () {
             console.log("Stopping jelly visualizer");
-            window.cancelAnimationFrame(jellyAnimationId);
-            //document.getElementById('visualizerContainer').removeChild(jellyRenderer.domElement);
-            let visualizerContainer = document.getElementById('visualizerContainer');
-            if (visualizerContainer && jellyRenderer && jellyRenderer.domElement && visualizerContainer.contains(jellyRenderer.domElement)) {
-                visualizerContainer.removeChild(jellyRenderer.domElement);
-            }
-            jellyOrbitControls.dispose();
-            jellyGUI.destroy();
-            if (jellyGUI && jellyGUI.domElement.parentNode) {
-                jellyGUI.domElement.parentNode.removeChild(jellyGUI.domElement);
-            }
-            window.removeEventListener("resize", jellyOnWindowResize);
+            dispose();
         },
+        dispose,
     };
 };
 
@@ -110,8 +139,7 @@ let jellyAnimationId;
 
 // update frames
 function animateJellyVisualizer() {
-    jellyAnimationId = requestAnimationFrame(animateJellyVisualizer);
-    state.time += clock.getDelta(); // create constant motion
+    state.time += jellyClock.getDelta(); // create constant motion
     if (microphone.initialized) {
         jellyOrbitControls.update();
 
@@ -133,6 +161,7 @@ function animateJellyVisualizer() {
 
         jellyRenderer.render(jellyScene, jellyCamera);
     }
+    jellyAnimationId = requestAnimationFrame(animateJellyVisualizer);
 }
 
 
@@ -159,6 +188,26 @@ function jellyOnWindowResize() {
     jellyCamera.aspect = window.innerWidth / window.innerHeight;
     jellyCamera.updateProjectionMatrix();
     jellyRenderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function disposeObject3D(root) {
+    root.traverse((object) => {
+        if (object.geometry) {
+            object.geometry.dispose();
+        }
+        if (object.material) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+                Object.keys(material).forEach((key) => {
+                    const value = material[key];
+                    if (value && typeof value.dispose === 'function') {
+                        value.dispose();
+                    }
+                });
+                material.dispose();
+            });
+        }
+    });
 }
 
 export { initJellyVisualizer };

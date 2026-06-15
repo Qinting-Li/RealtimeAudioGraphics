@@ -4,6 +4,7 @@ var cubeMat = new THREE.MeshPhongMaterial(new THREE.Color(0x000000));
 var tempV = new THREE.Vector3();
 var starRaycaster = new THREE.Raycaster();
 var pGalacticSystem;
+var pGalaxy;
 var skyBox;
 var mouse = new THREE.Vector2();
 var count = 30000;
@@ -19,6 +20,8 @@ var container, galaxyScene, galaxyCamera, renderer, galaxycontrols, currentScene
 // custom global variables
 var cube;
 var glow, glowmap;
+let galaxyAnimationId;
+let galaxyRunning = false;
 
 function constrain(v, min, max){
   if( v < min )
@@ -51,7 +54,6 @@ function generateGalaxy(){
 	var loader = new THREE.TextureLoader();
 	loader.setCrossOrigin("");
 	var bluemap = loader.load( "images/wstar2.png" );
-	var pickMat = loader.load( "images/star_preview.png" );
 		
 	var pMaterial = new THREE.PointsMaterial({
 			map: bluemap,
@@ -133,7 +135,7 @@ function generateGalaxy(){
 
 	//	make a top down image
 	var galacticTopMaterial = new THREE.MeshBasicMaterial({
-		map: THREE.ImageUtils.loadTexture('images/galactictop.png'),
+		map: loader.load('images/galactictop.png'),
 		blending: THREE.AdditiveBlending,
 		depthTest: false,
 		depthWrite: false,
@@ -156,7 +158,7 @@ function generateGalaxy(){
 function updateGalaxy()
 {
     let i = 0
-    const samples = microphone.getSamples();
+	const samples = microphone.getSamples();
     const volume = microphone.getVolume();
     while (i < count) {
         var x = random(-1000,1000) * volume;
@@ -171,11 +173,10 @@ function updateGalaxy()
     pGalaxy.attributes.position.needsUpdate = true;
 }
 
-let galaxyAnimationId;
-
 function initGalaxyVisualizer(mic)
 {
     microphone = mic;
+    let disposed = false;
 	// SCENE
 	currentScene = galaxyScene = new THREE.Scene();
 	// CAMERA
@@ -186,10 +187,7 @@ function initGalaxyVisualizer(mic)
 	galaxyCamera.position.set(0,2400,50000);
 	galaxyCamera.lookAt(galaxyScene.position);
 	// RENDERER
-	if ( Detector.webgl )
-		renderer = new THREE.WebGLRenderer( {antialias:true,alpha: true,premultipliedAlpha: true} );
-	else
-		renderer = new THREE.CanvasRenderer(); 
+	renderer = new THREE.WebGLRenderer( {antialias:true,alpha: true,premultipliedAlpha: true} );
 	renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('visualizerContainer').appendChild(renderer.domElement);
 	// EVENTS
@@ -230,31 +228,30 @@ function initGalaxyVisualizer(mic)
 	var skyGeometry = new THREE.BoxGeometry( 2000000, 2000000, 2000000 );
 	var materialArray = [];
 	materialArray.push( new THREE.MeshBasicMaterial({
-			map: THREE.ImageUtils.loadTexture( "images/ss_skybox/s_px.jpg"),
+			map: loader.load( "images/ss_skybox/s_px.jpg"),
 			side: THREE.BackSide
 		}));
 	materialArray.push( new THREE.MeshBasicMaterial({
-			map: THREE.ImageUtils.loadTexture( "images/ss_skybox/s_nx.jpg"),
+			map: loader.load( "images/ss_skybox/s_nx.jpg"),
 			side: THREE.BackSide
 		}));
 	materialArray.push( new THREE.MeshBasicMaterial({
-			map: THREE.ImageUtils.loadTexture( "images/ss_skybox/s_py.jpg"),
+			map: loader.load( "images/ss_skybox/s_py.jpg"),
 			side: THREE.BackSide
 		}));
 	materialArray.push( new THREE.MeshBasicMaterial({
-			map: THREE.ImageUtils.loadTexture( "images/ss_skybox/s_ny.jpg"),
+			map: loader.load( "images/ss_skybox/s_ny.jpg"),
 			side: THREE.BackSide
 		}));
 	materialArray.push( new THREE.MeshBasicMaterial({
-			map: THREE.ImageUtils.loadTexture( "images/ss_skybox/s_pz.jpg" ),
+			map: loader.load( "images/ss_skybox/s_pz.jpg" ),
 			side: THREE.BackSide
 		}));
 	materialArray.push( new THREE.MeshBasicMaterial({
-			map: THREE.ImageUtils.loadTexture( "images/ss_skybox/s_nz.jpg" ),
+			map: loader.load( "images/ss_skybox/s_nz.jpg" ),
 			side: THREE.BackSide
 		}));
-	var skyMaterial = new THREE.MeshFaceMaterial( materialArray );
-	skyBox = new THREE.Mesh( skyGeometry, skyMaterial );
+	skyBox = new THREE.Mesh( skyGeometry, materialArray );
 	galaxyScene.add( skyBox );
 
 	galaxycontrols = new THREE.TrackballControls( currentCamera, renderer.domElement );
@@ -273,17 +270,48 @@ function initGalaxyVisualizer(mic)
 		renderer.setSize( window.innerWidth, window.innerHeight );
 	}
 	
-	animate();
+	start();
 	
-	return {
+	function start() {
+        if (galaxyRunning || disposed) {
+            return;
+        }
+        galaxyRunning = true;
+        galaxyAnimationId = requestAnimationFrame(animate);
+    }
+
+    function stop() {
+        if (!galaxyRunning) {
+            return;
+        }
+        galaxyRunning = false;
+        window.cancelAnimationFrame(galaxyAnimationId);
+    }
+
+    function dispose() {
+        if (disposed) {
+            return;
+        }
+        stop();
+        disposed = true;
+        window.removeEventListener('click', onClick);
+        window.removeEventListener('resize', onWindowResize);
+        galaxycontrols.dispose();
+        disposeObject3D(galaxyScene);
+        renderer.dispose();
+        const visualizerContainer = document.getElementById('visualizerContainer');
+        if (visualizerContainer && renderer.domElement && visualizerContainer.contains(renderer.domElement)) {
+            visualizerContainer.removeChild(renderer.domElement);
+        }
+    }
+
+    return {
+        start,
         stop: function () {
             console.log("Stopping Galaxy visualizer");
-
-            window.cancelAnimationFrame(galaxyAnimationId);
-            document.getElementById('visualizerContainer').removeChild(renderer.domElement);
-            galaxycontrols.dispose();
-            window.removeEventListener('resize', onWindowResize);
+            dispose();
         },
+        dispose,
     };
 	
 	function onClick( event )
@@ -298,10 +326,9 @@ function initGalaxyVisualizer(mic)
 
 function animate() 
 {
-    galaxysAnimationId = requestAnimationFrame(() => animate());
-    //requestAnimationFrame( animate );
 	render();
 	update();
+    galaxyAnimationId = requestAnimationFrame(animate);
 }
 
 function update()
@@ -324,4 +351,24 @@ function render()
     galaxycontrols.maxDistance = 60000;
 
 	renderer.render( currentScene, currentCamera );
+}
+
+function disposeObject3D(root) {
+    root.traverse(function(object) {
+        if (object.geometry) {
+            object.geometry.dispose();
+        }
+        if (object.material) {
+            var materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach(function(material) {
+                Object.keys(material).forEach(function(key) {
+                    var value = material[key];
+                    if (value && typeof value.dispose === 'function') {
+                        value.dispose();
+                    }
+                });
+                material.dispose();
+            });
+        }
+    });
 }
